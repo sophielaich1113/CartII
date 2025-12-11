@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Dual Disaster — California</title>
+
+<link rel="stylesheet" href="https://js.arcgis.com/4.34/esri/css/main.css">
+<script src="https://js.arcgis.com/4.34/"></script>
+
+<style>
+html, body {
+  padding: 0;
+  margin: 0;
+  height: 100%;
+  width: 100%;
+  display: flex;
+  background-color: black;
+}
+
+.panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #444;
+  box-sizing: border-box;
+}
+
+#rightContainer {
+  border-right: none;
+}
+
+.titleDiv {
+  height: 60px;
+  background-color: #222;
+  color: white;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.titleDiv h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.titleDiv p {
+  margin: 0;
+  font-size: 14px;
+  color: #ccc;
+}
+
+.mapDiv {
+  flex: 1;
+}
+</style>
+</head>
+
+<body>
+  <div id="leftContainer" class="panel">
+    <div class="titleDiv">
+      <h2>Population and Wildfires</h2>
+      <p>2020</p>
+    </div>
+    <div id="leftView" class="mapDiv"></div>
+  </div>
+
+  <div id="rightContainer" class="panel">
+    <div class="titleDiv">
+      <h2>Population and Earthquakes</h2>
+      <p>2020</p>
+    </div>
+    <div id="rightView" class="mapDiv"></div>
+  </div>
+
+<script>
+require([
+  "esri/Map",
+  "esri/views/MapView",
+  "esri/layers/FeatureLayer",
+  "esri/layers/CSVLayer",
+  "esri/widgets/LayerList"
+], function(Map, MapView, FeatureLayer, CSVLayer, LayerList) {
+
+  const popLayerLeft = new FeatureLayer({
+    url: "https://services5.arcgis.com/nXNRC1vdZsFxBgaG/ArcGIS/rest/services/CaliforniaCounties_MLRC/FeatureServer/0",
+    renderer: {
+      type: "simple",
+      symbol: { type: "simple-fill", style: "solid", outline: { color: "#444", width: 0.4 } },
+      visualVariables: [{
+        type: "color",
+        field: "POPULATION",
+        stops: [
+          { value: 10000, color: "#f2f0f7" },
+          { value: 200000, color: "#cbc9e2" },
+          { value: 500000, color: "#9e9ac8" },
+          { value: 1000000, color: "#756bb1" },
+          { value: 10000000, color: "#54278f" }
+        ]
+      }]
+    },
+    opacity: 0.7,
+    title: "Population by County",
+    popupTemplate: {
+      title: "{COUNTYNAME} County",
+      content: "Population (2020): <b>{POPULATION}</b>"
+    }
+  });
+  const mapLeft = new Map({ basemap: "streets", layers: [popLayerLeft] });
+  const viewLeft = new MapView({
+    container: "leftView",
+    map: mapLeft,
+    center: [-119.5, 37.5],
+    zoom: 5
+  });
+
+  const fireLayer = new FeatureLayer({
+    url: "https://services2.arcgis.com/cFEFS0EWrhfDeVw9/ArcGIS/rest/services/California_Fire_Perimeters/FeatureServer",
+    renderer: {
+      type: "simple",
+      symbol: { type: "simple-fill", color: [255,85,0,0.25], outline: { color: "red", width: 0.7 } }
+    },
+    title: "Wildfire Perimeters"
+  });
+  mapLeft.add(fireLayer);
+
+  const layerListLeft = new LayerList({
+    view: viewLeft,
+    listItemCreatedFunction: function(event){
+      const item = event.item;
+      if(item.layer.type !== "group"){
+        item.panel = { content: "legend", open: true };
+      }
+    }
+  });
+  viewLeft.ui.add(layerListLeft, "top-right");
+  const mapRight = new Map({ basemap: "streets", layers: [popLayerLeft.clone()] });
+  const viewRight = new MapView({
+    container: "rightView",
+    map: mapRight,
+    center: [-119.5, 37.5],
+    zoom: 5
+  });
+
+  const earthquakes = new CSVLayer({
+    url: "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.csv",
+    latitudeField: "latitude",
+    longitudeField: "longitude",
+    title: "Earthquakes",
+    popupTemplate: {
+      title: "M {mag} — {place}",
+      content: "Time: {time}"
+    }
+  });
+  earthquakes.renderer = {
+    type: "simple",
+    symbol: {
+      type: "simple-marker",
+      color: "#ffd700",
+      size: 9,
+      outline: { width: 1, color: "#333" }
+    }
+  };
+  mapRight.add(earthquakes);
+
+  const layerListRight = new LayerList({
+    view: viewRight,
+    listItemCreatedFunction: function(event){
+      const item = event.item;
+      if(item.layer.type !== "group"){
+        item.panel = { content: "legend", open: true };
+      }
+    }
+  });
+  viewRight.ui.add(layerListRight, "top-right");
+
+  const views = [viewLeft, viewRight];
+  let active;
+  const sync = source => {
+    if (!active || active !== source) return;
+    views.forEach(v => { if(v !== active) v.viewpoint = active.viewpoint; });
+  };
+  views.forEach(v => {
+    v.watch(["interacting", "animation"], () => { active = v; sync(active); });
+    v.watch("viewpoint", () => sync(v));
+  });
+
+});
+</script>
+</head>
+
+</body>
+</html>
